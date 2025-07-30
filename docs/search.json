@@ -1,0 +1,58 @@
+[
+  {
+    "objectID": "index.html",
+    "href": "index.html",
+    "title": "EDA: Diabetes Health Indicators",
+    "section": "",
+    "text": "The BRFSS 2015 Diabetes Health Indicators dataset contains survey responses from 253,680 U.S. adults.\n- Response variable: Diabetes_012\n- 0 = No diabetes\n- 1 = Diagnosed diabetes\n- 2 = Pre‑diabetes\n- EDA goals:\n1. Inspect data structure & quality\n2. Explore three predictors in relation to diabetes\n3. Generate insights to guide model building"
+  },
+  {
+    "objectID": "index.html#physactivity",
+    "href": "index.html#physactivity",
+    "title": "EDA: Diabetes Health Indicators",
+    "section": "PhysActivity",
+    "text": "PhysActivity\n\ndiab %&gt;% \n  count(PhysActivity) %&gt;% \n  ggplot(aes(PhysActivity, n)) +\n  geom_col() +\n  labs(\n    title = \"Physical Activity Levels\",\n    x     = \"PhysActivity\",\n    y     = \"Count\"\n  )"
+  },
+  {
+    "objectID": "index.html#highbp",
+    "href": "index.html#highbp",
+    "title": "EDA: Diabetes Health Indicators",
+    "section": "HighBP",
+    "text": "HighBP\n\ndiab %&gt;% \n  count(HighBP) %&gt;% \n  ggplot(aes(HighBP, n)) +\n  geom_col() +\n  labs(\n    title = \"High Blood Pressure Prevalence\",\n    x     = \"HighBP\",\n    y     = \"Count\"\n  )"
+  },
+  {
+    "objectID": "index.html#bmi",
+    "href": "index.html#bmi",
+    "title": "EDA: Diabetes Health Indicators",
+    "section": "BMI",
+    "text": "BMI\n\ndiab %&gt;% \n  ggplot(aes(BMI)) +\n  geom_histogram(bins = 30) +\n  labs(\n    title = \"BMI Distribution\",\n    x     = \"BMI\",\n    y     = \"Frequency\"\n  )"
+  },
+  {
+    "objectID": "index.html#physactivity-vs.-diabetes",
+    "href": "index.html#physactivity-vs.-diabetes",
+    "title": "EDA: Diabetes Health Indicators",
+    "section": "PhysActivity vs. Diabetes",
+    "text": "PhysActivity vs. Diabetes\n\ndiab %&gt;% \n  ggplot(aes(PhysActivity, fill = Diabetes_012)) +\n  geom_bar(position = \"fill\") +\n  scale_y_continuous(labels = scales::percent_format()) +\n  labs(\n    title = \"Diabetes Proportion by Physical Activity\",\n    x     = \"PhysActivity\",\n    y     = \"Percent\",\n    fill  = \"Diabetes\"\n  )"
+  },
+  {
+    "objectID": "index.html#highbp-vs.-diabetes",
+    "href": "index.html#highbp-vs.-diabetes",
+    "title": "EDA: Diabetes Health Indicators",
+    "section": "HighBP vs. Diabetes",
+    "text": "HighBP vs. Diabetes\n\ndiab %&gt;% \n  ggplot(aes(HighBP, fill = Diabetes_012)) +\n  geom_bar(position = \"fill\") +\n  scale_y_continuous(labels = scales::percent_format()) +\n  labs(\n    title = \"Diabetes Proportion by HighBP\",\n    x     = \"HighBP\",\n    y     = \"Percent\"\n  )"
+  },
+  {
+    "objectID": "index.html#bmi-vs.-diabetes",
+    "href": "index.html#bmi-vs.-diabetes",
+    "title": "EDA: Diabetes Health Indicators",
+    "section": "BMI vs. Diabetes",
+    "text": "BMI vs. Diabetes\n\n# make sure mgcv is available\nlibrary(mgcv)\n\nLoading required package: nlme\n\n\n\nAttaching package: 'nlme'\n\n\nThe following object is masked from 'package:dplyr':\n\n    collapse\n\n\nThis is mgcv 1.8-42. For overview type 'help(\"mgcv-package\")'.\n\n# convert factor to numeric for plotting\ndiab_plot &lt;- diab %&gt;% \n  mutate(\n    Diag = as.numeric(as.character(Diabetes_012))\n  )\n\n# plot with GAM smooth\nggplot(diab_plot, aes(x = BMI, y = Diag)) +\n  geom_jitter(\n    height = 0.05, \n    alpha  = 0.2\n  ) +\n  geom_smooth(\n    method  = \"gam\",\n    formula = y ~ s(x),\n    se      = TRUE\n  ) +\n  scale_y_continuous(\n    breaks = c(0,1,2),\n    labels = c(\"No\", \"Diagnosed\", \"Pre‑diabetes\")\n  ) +\n  labs(\n    title = \"BMI vs. Diabetes Probability (GAM smoother)\",\n    x     = \"BMI\",\n    y     = \"Diabetes Status\"\n  )\n\n\n\n\nBMI vs. Diabetes Probability (GAM smoother)"
+  },
+  {
+    "objectID": "Modeling.html",
+    "href": "Modeling.html",
+    "title": "Modeling Diabetes Risk",
+    "section": "",
+    "text": "Introduction\nIn this vignette we will:\n\nSplit the data into training (70%) and test (30%) sets.\n\nFit three candidate logistic regression models and choose the best via 5-fold CV (log-loss).\n\nFit a classification tree (tuning cp) and select the best.\n\nFit a random forest on our three EDA predictors (tuning mtry, ntree = 100).\n\nCompare the three best models on CV log-loss.\n\nEvaluate the overall winner on the held-out test set.\n\n\n\nData import & train/test split\n\n# 1. Read & prep\ndiab &lt;- read_csv(\n  \"diabetes_012_health_indicators_BRFSS2015.csv\",\n  show_col_types = FALSE\n) %&gt;%\n  # drop pre‑diabetes and recode to a binary outcome\n  filter(Diabetes_012 != 2) %&gt;%\n  mutate(\n    Diabetes = factor(\n      Diabetes_012,\n      levels = c(0,1),\n      labels = c(\"No\",\"Yes\")\n    )\n  )\n\n# 2. Split 70/30\nidx   &lt;- createDataPartition(diab$Diabetes, p = 0.7, list = FALSE)\ntrain &lt;- diab[idx, ]\ntest  &lt;- diab[-idx, ]\n\n# 3. Check balance\ntrain %&gt;% count(Diabetes) %&gt;% mutate(prop = n/sum(n))\n\n# A tibble: 2 × 3\n  Diabetes      n   prop\n  &lt;fct&gt;     &lt;int&gt;  &lt;dbl&gt;\n1 No       149593 0.979 \n2 Yes        3242 0.0212\n\ntest  %&gt;% count(Diabetes) %&gt;% mutate(prop = n/sum(n))\n\n# A tibble: 2 × 3\n  Diabetes     n   prop\n  &lt;fct&gt;    &lt;int&gt;  &lt;dbl&gt;\n1 No       64110 0.979 \n2 Yes       1389 0.0212\n\n\n\n\n2. CV setup with log‑loss\n\nctrl &lt;- trainControl(\n  method           = \"cv\",\n  number           = 5,\n  classProbs       = TRUE,\n  summaryFunction  = mnLogLoss\n)\n\n\n\n3. Logistic regression\nWe’ll fit three candidate logistic models:\nModel 1: the three EDA predictors\nModel 2: add `HighChol`\nModel 3: add a quadratic BMI term\n\nfit_glm1 &lt;- train(\n  Diabetes ~ PhysActivity + HighBP + BMI,\n  data      = train,\n  method    = \"glm\",\n  family    = \"binomial\",\n  metric    = \"logLoss\",\n  trControl = ctrl\n)\n\nfit_glm2 &lt;- train(\n  Diabetes ~ PhysActivity + HighBP + BMI + HighChol,\n  data      = train,\n  method    = \"glm\",\n  family    = \"binomial\",\n  metric    = \"logLoss\",\n  trControl = ctrl\n)\n\nfit_glm3 &lt;- train(\n  Diabetes ~ PhysActivity + HighBP + BMI + I(BMI^2),\n  data      = train,\n  method    = \"glm\",\n  family    = \"binomial\",\n  metric    = \"logLoss\",\n  trControl = ctrl\n)\n\nCompare logistic candidates:\n\nglm_res &lt;- resamples(list(\n  EDA     = fit_glm1,\n  AddChol = fit_glm2,\n  BMI2    = fit_glm3\n))\n\n# Box‑and‑whisker of CV log‑loss\nbwplot(glm_res, metric = \"logLoss\")\n\n\n\n\n\n\n\n# Numeric summary: mean ± SD\nsummary(glm_res, metric = \"logLoss\")$statistics$logLoss\n\n              Min.    1st Qu.     Median       Mean    3rd Qu.       Max. NA's\nEDA     0.09775797 0.09844594 0.09881924 0.09865696 0.09890094 0.09936069    0\nAddChol 0.09650403 0.09705218 0.09706299 0.09737093 0.09764909 0.09858635    0\nBMI2    0.09731313 0.09794505 0.09807317 0.09810186 0.09812885 0.09904908    0\n\n\nCompare logistic candidates\n\nglm_res &lt;- resamples(list(\n  EDA     = fit_glm1,\n  AddChol = fit_glm2,\n  BMI2    = fit_glm3\n))\n\n# Box‑and‑whisker plot of CV log‑loss\nbwplot(glm_res, metric = \"logLoss\")\n\n\n\n\n\n\n\n# Numeric summary (mean ± SD)\nsummary(glm_res, metric = \"logLoss\")$statistics$logLoss\n\n              Min.    1st Qu.     Median       Mean    3rd Qu.       Max. NA's\nEDA     0.09775797 0.09844594 0.09881924 0.09865696 0.09890094 0.09936069    0\nAddChol 0.09650403 0.09705218 0.09706299 0.09737093 0.09764909 0.09858635    0\nBMI2    0.09731313 0.09794505 0.09807317 0.09810186 0.09812885 0.09904908    0\n\n\nModel 2 (AddChol) is best.\n\nselected_glm &lt;- fit_glm2  \n\n\n\n4. Classification tree\nA tree can capture non-linear splits. We tune the complexity parameter cp:\n\ntree_grid &lt;- expand.grid(cp = seq(0, 0.1, by = 0.01))\n\nfit_tree &lt;- train(\n  Diabetes ~ PhysActivity + HighBP + BMI,\n  data      = train,\n  method    = \"rpart\",\n  metric    = \"logLoss\",\n  trControl = ctrl,\n  tuneGrid  = tree_grid\n)\n\n\n\nRandom forest\nUsing our three EDA variables only, with ntree = 100 for speed:\n\n# Random forest on just the 3 EDA predictors\nrf_grid &lt;- expand.grid(mtry = 1:3)\n\nfit_rf &lt;- train(\n  Diabetes ~ PhysActivity + HighBP + BMI,\n  data      = train,\n  method    = \"rf\",\n  metric    = \"logLoss\",\n  trControl = ctrl,\n  tuneGrid  = rf_grid,\n  # speed things up:\n  ntree     = 100      \n)\nfit_rf\n\nRandom Forest \n\n152835 samples\n     3 predictor\n     2 classes: 'No', 'Yes' \n\nNo pre-processing\nResampling: Cross-Validated (5 fold) \nSummary of sample sizes: 122268, 122268, 122268, 122269, 122267 \nResampling results across tuning parameters:\n\n  mtry  logLoss  \n  1     0.7324601\n  2     0.7318544\n  3     0.7318726\n\nlogLoss was used to select the optimal model using the smallest value.\nThe final value used for the model was mtry = 2.\n\n\n\n\nCV comparison\nCompare best logistic, tree, and RF on CV log-loss:\n\nresamps_best &lt;- resamples(list(\n  Logistic = selected_glm,\n  Tree     = fit_tree,\n  RF       = fit_rf\n))\n\nbwplot(resamps_best, metric = \"logLoss\")\n\n\n\n\n\n\n\nsummary(resamps_best, metric = \"logLoss\")$statistics$logLoss\n\n               Min.    1st Qu.     Median       Mean    3rd Qu.       Max. NA's\nLogistic 0.09650403 0.09705218 0.09706299 0.09737093 0.09764909 0.09858635    0\nTree     0.10267071 0.10267071 0.10267337 0.10272085 0.10279341 0.10279607    0\nRF       0.73018978 0.73118966 0.73226791 0.73185441 0.73227587 0.73334882    0\n\n\n\n\n7. Final model evaluation on test set\n\npred_prob   &lt;- predict(selected_glm, newdata = test, type = \"prob\")$Yes\nobs         &lt;- as.numeric(test$Diabetes == \"Yes\")\ntest_logloss &lt;- -mean(obs * log(pred_prob) + (1 - obs) * log(1 - pred_prob))\n\n# Print test log-loss\ntest_logloss\n\n[1] 0.09693858\n\n\nBest CV performer: Logistic regression (AddChol)\nThe test-set log-loss is 0.097."
+  }
+]
