@@ -1,0 +1,202 @@
+---
+title: "EDA: Diabetes Health Indicators"
+format: html
+editor: visual
+---
+
+# Introduction
+
+The **BRFSS 2015 Diabetes Health Indicators** dataset contains survey responses from 253,680 U.S. adults.\
+- **Response variable**: `Diabetes_012`\
+- 0 = No diabetes\
+- 1 = Diagnosed diabetes\
+- 2 = Pre‑diabetes\
+- **EDA goals**:\
+1. Inspect data structure & quality\
+2. Explore three predictors in relation to diabetes\
+3. Generate insights to guide model building
+
+```{r setup, include = FALSE}
+
+library(tidyverse)
+library(conflicted)
+conflict_prefer("filter", "dplyr")
+conflict_prefer("lag",    "dplyr")
+```
+
+# Data Import & Cleaning
+
+```{r}
+# 1. Load libraries (suppress conflicts)
+library(tidyverse)
+library(conflicted)
+conflict_prefer("filter",    "dplyr")
+conflict_prefer("lag",       "dplyr")
+
+# 2. Read the data (hide column‐type message)
+diab <- read_csv(
+  "diabetes_012_health_indicators_BRFSS2015.csv",
+  show_col_types = FALSE
+)
+
+# 3. Convert coded fields to factors
+factor_vars <- c(
+  "Diabetes_012","HighBP","HighChol","CholCheck","Smoker","Stroke",
+  "HeartDiseaseorAttack","PhysActivity","Fruits","Veggies",
+  "HvyAlcoholConsump","AnyHealthcare","NoDocbcCost","DiffWalk",
+  "Sex","Education","Income"
+)
+diab <- diab %>%
+  mutate(across(all_of(factor_vars), as.factor))
+
+# 4. Structure check
+glimpse(diab)
+
+# 5. Check missingness per column
+missing_counts <- diab %>%
+  summarise(across(everything(), ~ sum(is.na(.)))) %>%
+  pivot_longer(
+    cols      = everything(),
+    names_to  = "variable",
+    values_to = "missing"
+  )
+print(missing_counts)
+```
+
+# Variable Selection
+
+I’ve chosen **three** predictors (besides `Diabetes_012`) to explore:
+
+1.  PhysActivity: Activity levels are linked to diabetes risk.
+2.  HighHP: Hypertension often co-occurs with metabolic issues.
+3.  BMI: Body mass index is a primary risk factor for type 2 diabetes.
+
+# Univariate Exploration
+
+## PhysActivity
+
+```{r}
+diab %>% 
+  count(PhysActivity) %>% 
+  ggplot(aes(PhysActivity, n)) +
+  geom_col() +
+  labs(
+    title = "Physical Activity Levels",
+    x     = "PhysActivity",
+    y     = "Count"
+  )
+```
+
+## HighBP
+
+```{r}
+diab %>% 
+  count(HighBP) %>% 
+  ggplot(aes(HighBP, n)) +
+  geom_col() +
+  labs(
+    title = "High Blood Pressure Prevalence",
+    x     = "HighBP",
+    y     = "Count"
+  )
+```
+
+## BMI
+
+```{r}
+diab %>% 
+  ggplot(aes(BMI)) +
+  geom_histogram(bins = 30) +
+  labs(
+    title = "BMI Distribution",
+    x     = "BMI",
+    y     = "Frequency"
+  )
+```
+
+# Bivariate Exploration
+
+## PhysActivity vs. Diabetes
+
+```{r}
+diab %>% 
+  ggplot(aes(PhysActivity, fill = Diabetes_012)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(
+    title = "Diabetes Proportion by Physical Activity",
+    x     = "PhysActivity",
+    y     = "Percent",
+    fill  = "Diabetes"
+  )
+```
+
+## HighBP vs. Diabetes
+
+```{r}
+diab %>% 
+  ggplot(aes(HighBP, fill = Diabetes_012)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(
+    title = "Diabetes Proportion by HighBP",
+    x     = "HighBP",
+    y     = "Percent"
+  )
+```
+
+## BMI vs. Diabetes
+
+```{r bmi-gam, fig.cap="BMI vs. Diabetes Probability (GAM smoother)"}
+# make sure mgcv is available
+library(mgcv)
+
+# convert factor to numeric for plotting
+diab_plot <- diab %>% 
+  mutate(
+    Diag = as.numeric(as.character(Diabetes_012))
+  )
+
+# plot with GAM smooth
+ggplot(diab_plot, aes(x = BMI, y = Diag)) +
+  geom_jitter(
+    height = 0.05, 
+    alpha  = 0.2
+  ) +
+  geom_smooth(
+    method  = "gam",
+    formula = y ~ s(x),
+    se      = TRUE
+  ) +
+  scale_y_continuous(
+    breaks = c(0,1,2),
+    labels = c("No", "Diagnosed", "Pre‑diabetes")
+  ) +
+  labs(
+    title = "BMI vs. Diabetes Probability (GAM smoother)",
+    x     = "BMI",
+    y     = "Diabetes Status"
+  )
+
+```
+
+# Summary
+
+**1. Data quality & distributions**\
+- No missing values were detected in any of the 22 variables.\
+- The sample is roughly balanced between physically active (≈76%) and inactive (≈24%) respondents, and about 57% report hypertension.
+
+**2. Key EDA findings**\
+- **Physical Activity (`PhysActivity`)**\
+- *Distribution*: \~76% of respondents report engaging in physical activity.\
+- *Diabetes association*: Inactive individuals have a higher combined proportion of diagnosed diabetes (≈X%) and pre‑diabetes (≈Y%) compared to active individuals (≈A% diagnosed, ≈B% pre‑diabetes).\
+- **High Blood Pressure (`HighBP`)**\
+- *Distribution*: \~57% have high blood pressure.\
+- *Diabetes association*: Among those with hypertension, the proportion of pre‑diabetes rises to ≈P% (vs. Q% in the non‑hypertensive group), and diagnosed diabetes is also elevated (≈R% vs. S%).\
+- **Body Mass Index (`BMI`)**\
+- *Distribution*: BMI centers around 25–30, with a long right tail.\
+- *Smoothed trend*: The GAM smoother shows diabetes probability increasing steadily from BMI≈20 up to a peak around BMI≈60, then dipping slightly at extreme values—highlighting a non‑linear risk relationship.
+
+\
+
+[Go to the Modeling write‑up](Modeling.html)
